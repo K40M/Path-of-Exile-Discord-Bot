@@ -9,6 +9,8 @@ using System.Text;
 using System.Threading.Tasks;
 using NAudio.Wave;
 using System.Net;
+using HtmlAgilityPack;
+using Newtonsoft.Json;
 
 namespace PathOfExileBot
 {
@@ -20,6 +22,7 @@ namespace PathOfExileBot
         IAudioClient voiceClient;
         List<Ascendancy> ascendancies;
         List<ActiveSkill> skillGems;
+        List<Build> builds;
         string filePath = Environment.CurrentDirectory + "\\Files\\";
 
         public PoEBot()
@@ -27,6 +30,9 @@ namespace PathOfExileBot
             Random r = new Random();
             ascendancies = FillAscendancyList();
             skillGems = FillSkillList();
+            builds = new List<Build>();
+
+            LoadJsonData();
 
             client = new DiscordClient(x =>
             {
@@ -55,8 +61,14 @@ namespace PathOfExileBot
             {
                 JoinChannel(e.User.VoiceChannel);
                 voiceClient = await client.GetService<AudioService>().Join(voiceChannel);
-                Console.WriteLine(filePath + "PHYSICAL.mp3");
                 SendAudio(filePath + "PHYSICAL.mp3");
+            });
+
+            commands.CreateCommand("Divine").Do(async (e) =>
+            {
+                JoinChannel(e.User.VoiceChannel);
+                voiceClient = await client.GetService<AudioService>().Join(voiceChannel);
+                SendAudio(filePath + "Kreygasm.mp3");
             });
 
             commands.CreateCommand("Alive").Do(async (e) =>
@@ -73,7 +85,7 @@ namespace PathOfExileBot
                     JoinChannel(e.User.VoiceChannel);
                     voiceClient = await client.GetService<AudioService>().Join(voiceChannel);
                     await e.Channel.SendMessage("http://i.imgur.com/RkDAORK.gif");
-                    SendAudio(filePath + "LUL.mp3");
+                    SendAudio(filePath + "Smak.mp3");
                 }
                 else await e.User.PrivateChannel.SendMessage("You need to be in the channel to use this command");
             });
@@ -183,6 +195,95 @@ namespace PathOfExileBot
 
                 });
 
+            commands.CreateCommand("Builds").Parameter("buildtype", ParameterType.Optional).Do(async (e) =>
+            {
+                var arguments = e.Args;
+                string messageToSend = "";
+                BuildType type;
+                List<Build> rightBuilds;
+
+                if(e.GetArg("buildtype") != "")
+                {
+                    if (arguments[0] == "1" || arguments[0].ToLower() == "life")
+                        type = BuildType.Life;
+                    else if (arguments[0] == "2" || arguments[0].ToLower() == "lowlife" || arguments[0].ToLower() == "low life")
+                        type = BuildType.LowLife;
+                    else if (arguments[0] == "3" || arguments[0].ToLower() == "ci")
+                        type = BuildType.CI;
+                    else type = BuildType.NoIdea;
+                    rightBuilds = builds.Where(b => b.type == type).ToList();
+                }
+                else
+                {
+                    rightBuilds = builds;
+                }
+
+                foreach (Build build in rightBuilds)
+                {
+                    messageToSend += build.buildName + "\n" +
+                                     build.type + "\n" +
+                                     "<" + build.treeURL +">" + "\n" +
+                                     build.description + "----------------------------------------------------------------------------------------------------" + "\n";
+                }
+
+                await e.Channel.SendMessage(messageToSend);
+            });
+
+
+            commands.CreateCommand("addbuild").Parameter("Name", ParameterType.Required)
+                                              .Parameter("buildURL", ParameterType.Required)
+                                              .Parameter("buildtype", ParameterType.Required)
+                                              .Parameter("Description", ParameterType.Optional)
+                                              .Do(async (e) =>
+            {
+                var arguments = e.Args;
+                if (arguments[0] == "" || arguments[1] == "" || arguments[2] == "" || 
+                    Uri.IsWellFormedUriString(arguments[1], UriKind.RelativeOrAbsolute) == false
+                    || builds.Any(b => b.buildName == e.GetArg("Name")))
+                {
+                    await e.Channel.SendMessage("You did something wrong!");
+                }
+                else
+                {
+                    BuildType type;
+                    if (arguments[2] == "1" || arguments[2].ToLower() == "life")
+                        type = BuildType.Life;
+                    else if (arguments[2] == "2" || arguments[2].ToLower() == "lowlife" || arguments[3].ToLower() == "low life")
+                        type = BuildType.LowLife;
+                    else if (arguments[2] == "3" || arguments[2].ToLower() == "ci")
+                        type = BuildType.CI;
+                    else type = BuildType.NoIdea;
+
+                    if(arguments[1][0] != 'h')
+                        builds.Add(new Build(arguments[0], "https://" + arguments[1], type, arguments[3]));
+                    else
+                        builds.Add(new Build(arguments[0], arguments[1], type, arguments[3]));
+                    SaveJsonData();
+                    await e.Channel.SendMessage("Saved build " + e.GetArg("Name") + " succesfully");
+                }
+            });
+
+            commands.CreateCommand("RemoveBuild").Parameter("buildname").Do(async (e) =>
+            {
+                if(builds.Any(b => b.buildName == e.GetArg("buildname")))
+                {
+                    if (e.User.ServerPermissions.ManageServer)
+                    {
+                        builds.RemoveAll(b => b.buildName == e.GetArg("buildname"));
+                        await e.Channel.SendMessage("Removed the build " + e.GetArg("buildname"));
+                    }
+                    else await e.Channel.SendMessage("You are not an admin");
+                }
+                else
+                    await e.Channel.SendMessage("This build doesn't exist");
+            });
+
+            commands.CreateCommand("json").Do(async (e) =>
+            {
+                SaveJsonData();
+                await e.Channel.SendMessage("Saved");
+            });
+
             #endregion
 
             #endregion
@@ -190,9 +291,30 @@ namespace PathOfExileBot
             client.ExecuteAndWait(async () =>
             {
                 //Old bot with old name
-                //await discord.Connect("MjY2OTQ5MjEzOTY5OTczMjU4.C1FJTQ.R5ioBOCezKto441jzESn2JOzZaw", TokenType.Bot);
+                //await client.Connect("MjY2OTQ5MjEzOTY5OTczMjU4.C1FJTQ.R5ioBOCezKto441jzESn2JOzZaw", TokenType.Bot);
                 await client.Connect("MjczOTU3MTA3OTIzOTQzNDI0.C2rF-A.cdG2sZlXXz8d_qQsVerE5GiLmeQ", TokenType.Bot);
             });
+        }
+
+        private void LoadJsonData()
+        {
+            if (!File.Exists(filePath + "Builds.json"))
+            {
+                File.Create(filePath + "Builds.json");
+                LoadJsonData();
+            }
+            if(File.Exists(filePath + "Builds.json"))
+            {
+                var text = File.ReadAllText(filePath + "Builds.JSON");
+                if(text != "")
+                    builds = JsonConvert.DeserializeObject<List<Build>>(text);
+            }
+        }
+
+        private void SaveJsonData()
+        {
+            var json = JsonConvert.SerializeObject(builds, Formatting.Indented);
+            File.WriteAllText(filePath + "Builds.JSON", json);
         }
 
         //Returns a random skill of a certain type
