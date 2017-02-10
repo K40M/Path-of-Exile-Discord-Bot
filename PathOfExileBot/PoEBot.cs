@@ -11,6 +11,7 @@ using NAudio.Wave;
 using System.Net;
 using HtmlAgilityPack;
 using Newtonsoft.Json;
+using RestSharp.Extensions.MonoHttp;
 
 namespace PathOfExileBot
 {
@@ -23,7 +24,9 @@ namespace PathOfExileBot
         List<Ascendancy> ascendancies;
         List<ActiveSkill> skillGems;
         List<Build> builds;
+        List<Map> maps;
         string filePath = Environment.CurrentDirectory + "\\Files\\";
+        private const string PoeWikiUrl = "http://pathofexile.gamepedia.com/Map";
 
         public PoEBot()
         {
@@ -31,15 +34,17 @@ namespace PathOfExileBot
             ascendancies = FillAscendancyList();
             skillGems = FillSkillList();
             builds = new List<Build>();
-
+            maps = new List<Map>();
+            GetMapData();
             LoadJsonData();
+            UniqueBaseItems();
 
             client = new DiscordClient(x =>
             {
                 x.LogLevel = LogSeverity.Info;
                 x.LogHandler = Log;
             });
-
+            
             client.UsingCommands(x =>
             {
                 x.PrefixChar = '!';
@@ -117,6 +122,149 @@ namespace PathOfExileBot
                 await e.Channel.SendMessage(CheckIfExists(e.GetArg("ItemName")));
             });
 
+            commands.CreateCommand("Base").Parameter("Item", ParameterType.Multiple).Do(async (e) =>
+            {
+                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                string argument = "";
+                string output = "";
+                for (int i = 0; i < e.Args.Length; i++)
+                {
+                    argument += e.Args[i] + " ";
+                }
+                foreach(Map a in maps)
+                {
+                    if(a.uniqueBases.Contains(argument.Trim().ToLower()))
+                        output += a.Name + "\n";
+                }
+                await poeChannel.SendMessage(output);
+            });
+
+            commands.CreateCommand("Bases").Do(async (e) =>
+            {
+                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                string output = "";
+                maps = maps.OrderBy(x => x.Name).ToList();
+                for (int i = 0; i < maps.Count / 3; i++)
+                {
+                    if(maps[i].uniqueBases.Count >0)
+                        output += maps[i].ToString() + "\n";
+                }
+                await poeChannel.SendMessage(output);
+                output = "";
+                for (int i = (maps.Count / 3); i < (maps.Count / 3) * 2; i++)
+                {
+                    if (maps[i].uniqueBases.Count > 0)
+                        output += maps[i].ToString() + "\n";
+                }
+                await poeChannel.SendMessage(output);
+                output = "";
+                for (int i = (maps.Count / 3) * 2; i < maps.Count; i++)
+                {
+                    if (maps[i].uniqueBases.Count > 0)
+                        output += maps[i].ToString() + "\n";
+                }
+                await poeChannel.SendMessage(output);
+            });
+
+            commands.CreateCommand("checkbases").Do(async (e) =>
+            {
+                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                List<string> uniqueBases = new List<string>() { "Blue_Pearl_Amulet", "Bone_Helmet", "Crystal_Belt", "Gripped_Gloves", "Marble_Amulet", "Opal_Ring", "Spiked_Gloves", "Steel_Ring", "Vanguard_Belt", "Fingerless_Silk_Gloves", "Two-Toned_Boots_(Cold_and_Lightning_Resistance)", "Two-Toned_Boots_(Fire_and_Lightning_Resistance)", "Two-Toned_Boots_(Fire_and_Cold_Resistance)", "Blue_Pearl_Amulet" };
+
+                string output = "";
+                foreach(string a in uniqueBases)
+                {
+                    bool exists = false;
+                    foreach (var item in maps)
+                    {
+                        if (item.uniqueBases.Contains(a.Replace('_',' ').ToLower()))
+                        {
+                            exists = true;
+                            output += a + " = " + exists + "\n";
+                            break;
+                        }
+                    }                  
+                }
+
+                await poeChannel.SendMessage(output);
+            });
+
+            commands.CreateCommand("Map").Parameter("Map", ParameterType.Multiple).Do(async (e) =>
+            {
+                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                var argument = "";
+                for (int i = 0; i < e.Args.Length; i++)
+                {
+                    argument += e.Args[i] + " ";
+                }
+                argument += "Map";
+                foreach (Map map in maps)
+                {
+                    if(map.Name.ToLower() == argument.ToLower().Trim())
+                    {
+                        await poeChannel.SendMessage(map.ToString());
+                        return;
+                    }
+                }
+
+            });
+
+            commands.CreateCommand("Maps").Do(async (e) =>
+            {
+                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                string output = "";
+                maps = maps.OrderBy(o => o.Name).ToList();
+
+                for (int i = 0; i < maps.Count /3; i++)
+                {
+                    output += maps[i].ToString() + "\n";
+                }
+                await poeChannel.SendMessage(output);
+                output = "";
+
+                for (int i = (maps.Count/3); i < (maps.Count /3) *2; i++)
+                {
+                    output += maps[i].ToString() + "\n";
+                }
+                await poeChannel.SendMessage(output);
+                output = "";
+
+                for (int i = (maps.Count / 3) *2; i < maps.Count; i++)
+                {
+                    output += maps[i].ToString() + "\n";
+                }
+                await poeChannel.SendMessage(output);
+            });
+
+            commands.CreateCommand("Maps").Parameter("Layout", ParameterType.Optional).Parameter("Level", ParameterType.Optional).Do(async (e) =>
+            {
+                maps = maps.OrderBy(q => q.Name).ToList();
+                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                string output = "";
+                int a;
+                var arguments = e.Args;
+
+                if(int.TryParse(arguments[0], out a) && arguments[1] != "")
+                        maps.Where(m => m.LayoutType.ToLower() == arguments[1].ToLower()).ToList()
+                            .Where(m => m.Level.ToLower() == arguments[0].ToLower()).ToList()
+                            .ForEach(x => output += x.ToString() + "\n");
+
+                else if(arguments[0] != "" && arguments[1] != "")
+                    maps.Where(m => m.LayoutType.ToLower() == e.GetArg("Layout").ToLower()).ToList()
+                        .Where(m => m.Level.ToLower() == e.GetArg("Level").ToLower()).ToList()
+                        .ForEach(x => output += x.ToString() + "\n");
+
+                else if (int.TryParse(arguments[0], out a))
+                    maps.Where(m => m.Level.ToLower() == arguments[0].ToLower()).ToList()
+                        .ForEach(x => output += x.ToString() + "\n");
+
+                else if (arguments[0] != "")
+                    maps.Where(m => m.LayoutType.ToLower() == e.GetArg("Layout").ToLower()).ToList()
+                        .ForEach(x => output += x.ToString() + "\n");
+
+                await poeChannel.SendMessage(output);
+            });
+
             #endregion
 
             #region BuildCommands
@@ -141,62 +289,32 @@ namespace PathOfExileBot
             commands.CreateCommand("Roll").Parameter("NumberOfKeystones", ParameterType.Optional).Alias(new string[] { "Rollebol", "Barrelroll" }).Description("Generates a random build for your character.")
                 .Do(async (e) =>
                 {
-                    string displayKeystones;
                     int b;
                     var a = int.TryParse(e.GetArg("NumberOfKeystones"), out b);
                     if (b > 23)
                         b = 23;
                     if (b <= 0)
                         b = 0;
-
-                    displayKeystones = b <= 0 ? displayKeystones = "" : "Keystones: ";
-
-                    //Ascendancy
-                    Ascendancy ascendancy = ascendancies[r.Next(0, ascendancies.Count)];
-                    List<SkillType> types = ascendancy.skilltype;
-
-                    //Vaal Skill
-                    string vaalName = "";
-                    ActiveSkill gem = GetRandomSkill(types);
-
-                    if (gem.vaal == true)
-                        vaalName = "Vaal " + gem.name + " " + GetWikiLink("Vaal " + gem.name) + "\n";
-
-                    //Keystones
-                    List<string> keystones = GetKeystones(b);
-                    foreach (string s in keystones)
-                    {
-                        displayKeystones += "\n" + s + " " + GetWikiLink(s);
-                    }
-
                     JoinChannel(e.User.VoiceChannel);
                     voiceClient = await client.GetService<AudioService>().Join(voiceChannel);
                     SendAudio(filePath + "ROLL.mp3");
-
-                    if (gem.name == "Cast On Critical Strike Support")
-                    {
-                        List<ActiveSkill> skills = CoC(1);
-                        string cocSkill = "Your CoC skill is: " + "\n";
-                        foreach (ActiveSkill s in skills)
-                        {
-                            cocSkill += s.name + GetWikiLink(s.name) + "\n";
-                        }
-
-                        await e.Channel.SendMessage(e.User.Name + "\n" + cocSkill + " " + GetWikiLink("Cast On Critical Strike Support") + "\n" + ascendancy.name + " (" + ascendancy.baseClass.ToString() + ") " + GetWikiLink(ascendancy.name) +
-                            "\n" + vaalName +
-                            "\n" + displayKeystones);
-                    }
-                    else
-                    {
-                        await e.Channel.SendMessage(e.User.Name + "\n" + gem.name + " " + GetWikiLink(gem.name) + "\n" + ascendancy.name + " (" + ascendancy.baseClass.ToString() + ") " + GetWikiLink(ascendancy.name) +
-                            "\n" + vaalName +
-                            "\n" + displayKeystones);
-                    }
-
+                    
+                    await e.Channel.SendMessage(Roll(e.User.Name, b));
                 });
+
+            commands.CreateCommand("RollSilent").Parameter("NumberOfKeystones", ParameterType.Optional).Do(async (e) =>{
+                int b;
+                var a = int.TryParse(e.GetArg("NumberOfKeystones"), out b);
+                if (b > 23)
+                    b = 23;
+                if (b <= 0)
+                    b = 0;
+                await e.Channel.SendMessage(Roll(e.User.Name, b));
+            });
 
             commands.CreateCommand("Builds").Parameter("buildtype", ParameterType.Optional).Do(async (e) =>
             {
+                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
                 var arguments = e.Args;
                 string messageToSend = "";
                 BuildType type;
@@ -222,29 +340,32 @@ namespace PathOfExileBot
                 {
                     messageToSend += build.buildName + "\n" +
                                      build.type + "\n" +
-                                     "<" + build.treeURL +">" + "\n" +
-                                     build.description + "----------------------------------------------------------------------------------------------------" + "\n";
+                                     "<" + ShortenURL(build.treeURL) +">" + "\n" +
+                                     build.description + "\n" + "----------------------------------------------------------------------------------------------------" + "\n";
                 }
 
-                await e.Channel.SendMessage(messageToSend);
+                await poeChannel.SendMessage(messageToSend);
             });
 
 
             commands.CreateCommand("addbuild").Parameter("Name", ParameterType.Required)
                                               .Parameter("buildURL", ParameterType.Required)
                                               .Parameter("buildtype", ParameterType.Required)
-                                              .Parameter("Description", ParameterType.Optional)
+                                              .Parameter("Description", ParameterType.Multiple)
                                               .Do(async (e) =>
             {
+                await e.Channel.Messages.Last().Delete();
                 var arguments = e.Args;
-                if (arguments[0] == "" || arguments[1] == "" || arguments[2] == "" || 
-                    Uri.IsWellFormedUriString(arguments[1], UriKind.RelativeOrAbsolute) == false
-                    || builds.Any(b => b.buildName == e.GetArg("Name")))
+                if (arguments[0] == "" || arguments[1] == "" || arguments[2] == "" ||
+                    Uri.IsWellFormedUriString(arguments[1], UriKind.RelativeOrAbsolute) == false)
                 {
                     await e.Channel.SendMessage("You did something wrong!");
                 }
+                else if (builds.Any(b => b.buildName.ToLower() == e.GetArg("Name").ToLower()))
+                    await e.Channel.SendMessage("A build with this name already exist");
                 else
                 {
+                    Console.WriteLine(arguments.Length);
                     BuildType type;
                     if (arguments[2] == "1" || arguments[2].ToLower() == "life")
                         type = BuildType.Life;
@@ -254,10 +375,20 @@ namespace PathOfExileBot
                         type = BuildType.CI;
                     else type = BuildType.NoIdea;
 
-                    if(arguments[1][0] != 'h')
+                    string description = "";
+                    if (arguments.Length > 4)
+                    {
+                        for (int i = 3; i < arguments.Length; i++)
+                        {
+                            description += arguments[i] + " ";
+                        }
+                    }
+                    else description = arguments[3];
+
+                    if (arguments[1][0] != 'h')
                         builds.Add(new Build(arguments[0], "https://" + arguments[1], type, arguments[3]));
                     else
-                        builds.Add(new Build(arguments[0], arguments[1], type, arguments[3]));
+                        builds.Add(new Build(arguments[0], arguments[1], type, description));
                     SaveJsonData();
                     await e.Channel.SendMessage("Saved build " + e.GetArg("Name") + " succesfully");
                 }
@@ -265,23 +396,19 @@ namespace PathOfExileBot
 
             commands.CreateCommand("RemoveBuild").Parameter("buildname").Do(async (e) =>
             {
-                if(builds.Any(b => b.buildName == e.GetArg("buildname")))
+                if(builds.Any(b => b.buildName.ToLower() == e.GetArg("buildname").ToLower()))
                 {
                     if (e.User.ServerPermissions.ManageServer)
                     {
-                        builds.RemoveAll(b => b.buildName == e.GetArg("buildname"));
+                        builds.RemoveAll(b => b.buildName.ToLower() == e.GetArg("buildname").ToLower());
+                        SaveJsonData();
+                        LoadJsonData();
                         await e.Channel.SendMessage("Removed the build " + e.GetArg("buildname"));
                     }
                     else await e.Channel.SendMessage("You are not an admin");
                 }
                 else
                     await e.Channel.SendMessage("This build doesn't exist");
-            });
-
-            commands.CreateCommand("json").Do(async (e) =>
-            {
-                SaveJsonData();
-                await e.Channel.SendMessage("Saved");
             });
 
             #endregion
@@ -296,7 +423,7 @@ namespace PathOfExileBot
             });
         }
 
-        private void LoadJsonData()
+        void LoadJsonData()
         {
             if (!File.Exists(filePath + "Builds.json"))
             {
@@ -311,10 +438,198 @@ namespace PathOfExileBot
             }
         }
 
-        private void SaveJsonData()
+        string Roll(string userName, int numberOfKeystones)
+        {
+            Random r = new Random();
+            string displayKeystones;
+            int b = 0;
+            if (numberOfKeystones > 23)
+                b = 23;
+            if (numberOfKeystones <= 0)
+                b = 0;
+
+            displayKeystones = b <= 0 ? displayKeystones = "" : "Keystones: ";
+
+            //Ascendancy
+            Ascendancy ascendancy = ascendancies[r.Next(0, ascendancies.Count)];
+            List<SkillType> types = ascendancy.skilltype;
+
+            //Vaal Skill
+            string vaalName = "";
+            ActiveSkill gem = GetRandomSkill(types);
+
+            if (gem.vaal == true)
+                vaalName = "Vaal " + gem.name + " " + GetWikiLink("Vaal " + gem.name) + "\n";
+
+            //Keystones
+            List<string> keystones = GetKeystones(b);
+            foreach (string s in keystones)
+            {
+                displayKeystones += "\n" + s + " " + GetWikiLink(s);
+            }
+
+            if (gem.name == "Cast On Critical Strike Support")
+            {
+                List<ActiveSkill> skills = CoC(1);
+                string cocSkill = "Your CoC skill is: " + "\n";
+                foreach (ActiveSkill s in skills)
+                {
+                    cocSkill += s.name + GetWikiLink(s.name) + "\n";
+                }
+
+                return userName + "\n" + cocSkill + " " + GetWikiLink("Cast On Critical Strike Support") + "\n" + ascendancy.name + " (" + ascendancy.baseClass.ToString() + ") " + GetWikiLink(ascendancy.name) +
+                    "\n" + vaalName +
+                    "\n" + displayKeystones;
+            }
+            else
+            {
+                return userName + "\n" + gem.name + " " + GetWikiLink(gem.name) + "\n" + ascendancy.name + " (" + ascendancy.baseClass.ToString() + ") " + GetWikiLink(ascendancy.name) +
+                    "\n" + vaalName +
+                    "\n" + displayKeystones;
+            }
+        }
+
+        void SaveJsonData()
         {
             var json = JsonConvert.SerializeObject(builds, Formatting.Indented);
             File.WriteAllText(filePath + "Builds.JSON", json);
+        }
+
+        private async void GetMapData()
+        {
+            List<Map> mapDataList = new List<Map>();
+            HtmlDocument htmlDoc = new HtmlDocument();
+
+            await Task.Run(() =>
+            {
+                htmlDoc.Load(GetHtmlStream(PoeWikiUrl));
+            });
+
+            if (htmlDoc.ParseErrors != null && htmlDoc.ParseErrors.Any())
+                throw new Exception("Errors: " + htmlDoc.ParseErrors);
+
+            if (htmlDoc.DocumentNode != null)
+            {
+                HtmlNodeCollection mapRows = htmlDoc.DocumentNode.SelectNodes(@"//div[@id='global-wrapper']/div[@id='pageWrapper']/div[@id='content']/div[@id='bodyContent']/div[@id='mw-content-text']/table[2]/tr");
+
+                for (int i = 0; i < mapRows.Count; i++)
+                {
+                    if (i == 0) // skip headers
+                        continue;
+                    try
+                    {
+                        Map data = GetMapFromHtmlNode(mapRows[i]);
+                        mapDataList.Add(data);
+                    }
+                    catch
+                    {
+
+                    }
+                }
+            }
+            maps = mapDataList;
+        }
+
+        private Stream GetHtmlStream(string url)
+        {
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            HttpWebResponse response = (HttpWebResponse)request.GetResponse();
+
+            if (response.StatusCode == HttpStatusCode.OK)
+                return response.GetResponseStream();
+
+            return Stream.Null;
+        }
+
+        async void UniqueBaseItems()
+        {
+            List<string> uniqueBases = new List<string>() { "Blue_Pearl_Amulet", "Bone_Helmet", "Crystal_Belt", "Gripped_Gloves", "Marble_Amulet", "Opal_Ring", "Spiked_Gloves", "Steel_Ring", "Vanguard_Belt", "Fingerless_Silk_Gloves","Two-Toned_Boots_(Cold_and_Lightning_Resistance)", "Two-Toned_Boots_(Fire_and_Lightning_Resistance)", "Two-Toned_Boots_(Fire_and_Cold_Resistance)", "Blue_Pearl_Amulet"};
+
+            HtmlDocument htmlDoc = new HtmlDocument();
+
+            for (int i = 0; i < uniqueBases.Count; i++)
+            {
+                await Task.Run(() =>
+                {
+                    htmlDoc.Load(GetHtmlStream("http://pathofexile.gamepedia.com/" + uniqueBases[i]));
+                });
+
+                if (htmlDoc.ParseErrors != null && htmlDoc.ParseErrors.Any())
+                    throw new Exception("Errors: " + htmlDoc.ParseErrors);
+
+                HtmlNodeCollection mapRows = htmlDoc.DocumentNode.SelectNodes(@"//div[@id='global-wrapper']/div[@id='pageWrapper']/div[@id='content']/div[@id='bodyContent']/div[@id='mw-content-text']/ul");
+                foreach (var row in mapRows)
+                {
+                    for (int j = 0; j < row.ChildNodes.Count; j++)
+                    {
+                        HtmlNode subNode = row.ChildNodes[j];
+                        if (subNode.Name == "li")
+                        {
+                            HtmlNodeCollection nameNode = subNode.SelectSingleNode("span").ChildNodes;
+
+                            foreach(Map map in maps)
+                            {
+                                if (map.Name == nameNode[1].InnerText)
+                                {
+                                    map.AddBase(uniqueBases[i]);
+                                }
+                            }                         
+                        }
+                    }
+                }
+            }          
+        }
+
+        private Map GetMapFromHtmlNode(HtmlNode node)
+        {
+            Map data = new Map();
+            for (int i = 0; i < node.ChildNodes.Count; i++)
+            {
+                HtmlNode subNode = node.ChildNodes[i];
+                if (subNode.Name == "td")
+                {
+                    switch (i)
+                    {
+                        case 1:
+                            HtmlNode nameNode = subNode.SelectSingleNode("span/a[2]");
+                            data.Name = nameNode.InnerText;
+                            break;
+                        case 3:
+                            data.Level = subNode.InnerText.Trim();
+                            break;
+                        case 5:
+                            data.Tier = subNode.InnerText;
+                            break;
+                        case 7:
+                            data.Unique = subNode.InnerHtml.Contains("yes");
+                            break;
+                        case 9:
+                            data.LayoutType = subNode.InnerText.Trim();
+                            break;
+                        case 11:
+                            data.BossDifficulty = subNode.InnerText;
+                            break;
+                        case 13:
+                            data.LayoutSet = subNode.InnerText;
+                            break;
+                        case 15:
+                            List<string> uniqueBosses = new List<string>();
+                            subNode.ChildNodes.ToList().ForEach(n =>
+                            {
+                                if (n.Name == "a")
+                                    uniqueBosses.Add(n.InnerText);
+                            });
+                            data.UniqueBoss = string.Join(",", uniqueBosses);
+                            break;
+
+                        case 17:
+                            data.NumberOfBosses = subNode.InnerText;
+                            break;
+                    }
+                }
+            }
+
+            return data;
         }
 
         //Returns a random skill of a certain type
@@ -334,8 +649,17 @@ namespace PathOfExileBot
             return gem;
         }
 
+        //Returns a tinyURL based on the given url
+        string ShortenURL(string url)
+        {
+            Uri address = new Uri("http://tinyurl.com/api-create.php?url=" + url);
+            WebClient client = new WebClient();
+            string tinyUrl = client.DownloadString(address);
+            return tinyUrl;
+        }
+
         //Checks if the requested item exists on the wiki
-        private string CheckIfExists(string item)
+        string CheckIfExists(string item)
         {
             string itemName = "";
             string[] a = item.ToLower().Replace("'", "%27").Split(new char[] { ' ', '_', '=', '~', '.', '/', '|', '\'' });
@@ -400,26 +724,25 @@ namespace PathOfExileBot
             }
             catch (WebException)
             {
-                Console.WriteLine("Exception");
                 return "Item doesn't exist";
             }
 
         }
 
         //Returns a link to the requested item
-        private string GetWikiLink(string item)
+        string GetWikiLink(string item)
         {
             return "<http://pathofexile.gamepedia.com/" + item.Replace(" ", "_") + ">";
         }
 
-        //Logs message to the console
-        private void Log(object sender, LogMessageEventArgs e)
+        //Logs a message to the console
+        void Log(object sender, LogMessageEventArgs e)
         {
             Console.WriteLine(e.Message);
         }
 
-        //Joins a specific voiceChannel.
-        private void JoinChannel(Channel channelToJoin)
+        //Join a voiceChannel.
+        void JoinChannel(Channel channelToJoin)
         {
             var voiceChannels = client.FindServers("Big Boys").FirstOrDefault().VoiceChannels;
 
@@ -505,7 +828,7 @@ namespace PathOfExileBot
         }
 
         //Returns a list of skills gems
-        private List<ActiveSkill> CoC(int amountOfSkills)
+        List<ActiveSkill> CoC(int amountOfSkills)
         {
             List<string> notValidSkills = notValidSkillList;
 

@@ -105,12 +105,16 @@
     <Compile Include="ActiveSkill.cs" />
     <Compile Include="Ascendancy.cs" />
     <Compile Include="Build.cs" />
+    <Compile Include="Map.cs" />
     <Compile Include="PoEBot.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
+    <Content Include="Files\maps.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
