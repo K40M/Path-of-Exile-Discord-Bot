@@ -5,13 +5,11 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using NAudio.Wave;
 using System.Net;
 using HtmlAgilityPack;
 using Newtonsoft.Json;
-using RestSharp.Extensions.MonoHttp;
 
 namespace PathOfExileBot
 {
@@ -21,8 +19,6 @@ namespace PathOfExileBot
         CommandService commands;
         Channel voiceChannel;
         IAudioClient voiceClient;
-        List<Ascendancy> ascendancies;
-        List<ActiveSkill> skillGems;
         List<Build> builds;
         List<Map> maps;
         string filePath = Environment.CurrentDirectory + "\\Files\\";
@@ -31,8 +27,6 @@ namespace PathOfExileBot
         public PoEBot()
         {
             Random r = new Random();
-            ascendancies = FillAscendancyList();
-            skillGems = FillSkillList();
             builds = new List<Build>();
             maps = new List<Map>();
             GetMapData();
@@ -206,7 +200,6 @@ namespace PathOfExileBot
                         return;
                     }
                 }
-
             });
 
             commands.CreateCommand("Maps").Do(async (e) =>
@@ -415,12 +408,36 @@ namespace PathOfExileBot
 
             #endregion
 
+            //Change BOTTOKEN to your bot token
             client.ExecuteAndWait(async () =>
             {
-                //Old bot with old name
-                //await client.Connect("MjY2OTQ5MjEzOTY5OTczMjU4.C1FJTQ.R5ioBOCezKto441jzESn2JOzZaw", TokenType.Bot);
-                await client.Connect("MjczOTU3MTA3OTIzOTQzNDI0.C2rF-A.cdG2sZlXXz8d_qQsVerE5GiLmeQ", TokenType.Bot);
+                await client.Connect("BOTTOKEN", TokenType.Bot);
             });
+        }
+
+        //Fills up the skill gems with tags from the wiki
+        //Cleave gets tagged with Attack, AOE, Melee etc. 
+        private async void GetGemTags()
+        {
+            Console.WriteLine(Data.skills.Count);
+            foreach (var gem in Data.skills)
+            {
+                HtmlDocument htmlDoc = new HtmlDocument();
+
+                await Task.Run(() =>
+                {
+                    htmlDoc.Load(GetHtmlStream("http://pathofexile.gamepedia.com/" + gem.name));
+                });
+
+                if (htmlDoc.ParseErrors != null && htmlDoc.ParseErrors.Any())
+                    throw new Exception("Errors: " + htmlDoc.ParseErrors);
+                var tags = htmlDoc.DocumentNode.SelectSingleNode("//span[@class ='group']");
+                var nodes = tags.SelectNodes("a");
+                foreach (var item in nodes)
+                {
+                    gem.tags.Add(item.InnerText);
+                }
+            }
         }
 
         void LoadJsonData()
@@ -442,16 +459,15 @@ namespace PathOfExileBot
         {
             Random r = new Random();
             string displayKeystones;
-            int b = 0;
             if (numberOfKeystones > 23)
-                b = 23;
+                numberOfKeystones = 23;
             if (numberOfKeystones <= 0)
-                b = 0;
+                numberOfKeystones = 0;
 
-            displayKeystones = b <= 0 ? displayKeystones = "" : "Keystones: ";
+            displayKeystones = numberOfKeystones <= 0 ? displayKeystones = "" : "Keystones: ";
 
             //Ascendancy
-            Ascendancy ascendancy = ascendancies[r.Next(0, ascendancies.Count)];
+            Ascendancy ascendancy = Data.Ascendancies[r.Next(0, Data.Ascendancies.Count)];
             List<SkillType> types = ascendancy.skilltype;
 
             //Vaal Skill
@@ -462,7 +478,7 @@ namespace PathOfExileBot
                 vaalName = "Vaal " + gem.name + " " + GetWikiLink("Vaal " + gem.name) + "\n";
 
             //Keystones
-            List<string> keystones = GetKeystones(b);
+            List<string> keystones = GetKeystones(numberOfKeystones);
             foreach (string s in keystones)
             {
                 displayKeystones += "\n" + s + " " + GetWikiLink(s);
@@ -489,7 +505,7 @@ namespace PathOfExileBot
             }
         }
 
-        void SaveJsonData()
+        private void SaveJsonData()
         {
             var json = JsonConvert.SerializeObject(builds, Formatting.Indented);
             File.WriteAllText(filePath + "Builds.JSON", json);
@@ -541,7 +557,7 @@ namespace PathOfExileBot
             return Stream.Null;
         }
 
-        async void UniqueBaseItems()
+        private async void UniqueBaseItems()
         {
             List<string> uniqueBases = new List<string>() { "Blue_Pearl_Amulet", "Bone_Helmet", "Crystal_Belt", "Gripped_Gloves", "Marble_Amulet", "Opal_Ring", "Spiked_Gloves", "Steel_Ring", "Vanguard_Belt", "Fingerless_Silk_Gloves","Two-Toned_Boots_(Cold_and_Lightning_Resistance)", "Two-Toned_Boots_(Fire_and_Lightning_Resistance)", "Two-Toned_Boots_(Fire_and_Cold_Resistance)", "Blue_Pearl_Amulet"};
 
@@ -633,12 +649,12 @@ namespace PathOfExileBot
         }
 
         //Returns a random skill of a certain type
-        ActiveSkill GetRandomSkill(List<SkillType> types)
+        private ActiveSkill GetRandomSkill(List<SkillType> types)
         {
             List<ActiveSkill> gems = new List<ActiveSkill>();
             ActiveSkill gem;
 
-            foreach (ActiveSkill skill in skillGems)
+            foreach (ActiveSkill skill in Data.skills)
             {
                 if (types.Contains(skill.type))
                     gems.Add(skill);
@@ -650,7 +666,7 @@ namespace PathOfExileBot
         }
 
         //Returns a tinyURL based on the given url
-        string ShortenURL(string url)
+        private string ShortenURL(string url)
         {
             Uri address = new Uri("http://tinyurl.com/api-create.php?url=" + url);
             WebClient client = new WebClient();
@@ -659,7 +675,7 @@ namespace PathOfExileBot
         }
 
         //Checks if the requested item exists on the wiki
-        string CheckIfExists(string item)
+        private string CheckIfExists(string item)
         {
             string itemName = "";
             string[] a = item.ToLower().Replace("'", "%27").Split(new char[] { ' ', '_', '=', '~', '.', '/', '|', '\'' });
@@ -730,19 +746,19 @@ namespace PathOfExileBot
         }
 
         //Returns a link to the requested item
-        string GetWikiLink(string item)
+        private string GetWikiLink(string item)
         {
             return "<http://pathofexile.gamepedia.com/" + item.Replace(" ", "_") + ">";
         }
 
         //Logs a message to the console
-        void Log(object sender, LogMessageEventArgs e)
+        private void Log(object sender, LogMessageEventArgs e)
         {
             Console.WriteLine(e.Message);
         }
 
         //Join a voiceChannel.
-        void JoinChannel(Channel channelToJoin)
+        private void JoinChannel(Channel channelToJoin)
         {
             var voiceChannels = client.FindServers("Big Boys").FirstOrDefault().VoiceChannels;
 
@@ -754,7 +770,7 @@ namespace PathOfExileBot
         }
 
         //Play audio files to the current Voice Channel
-        void SendAudio(string filePath)
+        private void SendAudio(string filePath)
         {
             voiceClient.Wait();
             var channelCount = client.GetService<AudioService>().Config.Channels; // Get the number of AudioChannels our AudioService has been configured to use.
@@ -780,43 +796,15 @@ namespace PathOfExileBot
             }
         }
 
-        //List with available ascendancies
-        List<Ascendancy> FillAscendancyList()
-        {
-            List<Ascendancy> a = new List<Ascendancy>()
-            {
-                new Ascendancy("Slayer", BaseClass.Duelist, new List<SkillType>() {SkillType.Mines, SkillType.Minions, SkillType.Totems, SkillType.Traps }),
-                new Ascendancy("Gladiator", BaseClass.Duelist),
-                new Ascendancy("Champion", BaseClass.Duelist),
-                new Ascendancy("Assasin",BaseClass.Shadow, new List<SkillType>() {SkillType.Minions }),
-                new Ascendancy("Saboteur",BaseClass.Shadow, new List<SkillType>() {SkillType.Totems, SkillType.Minions }),
-                new Ascendancy("Trickster", BaseClass.Shadow),
-                new Ascendancy("Juggernaut", BaseClass.Marauder),
-                new Ascendancy("Berserker", BaseClass.Marauder, new List<SkillType>() {SkillType.Minions }),
-                new Ascendancy("Chieftain", BaseClass.Marauder),
-                new Ascendancy("Necromancer", BaseClass.Witch),
-                new Ascendancy("Elementalist",BaseClass.Witch, new List<SkillType>() {SkillType.Minions }),
-                new Ascendancy("Occultist", BaseClass.Witch, new List<SkillType>() {SkillType.Minions }),
-                new Ascendancy("Deadeye", BaseClass.Ranger, new List<SkillType>() {SkillType.MeleeAttack, SkillType.MeleeSpell, SkillType.Mines, SkillType.Minions, SkillType.Minions, SkillType.Totems, SkillType.Traps }),
-                new Ascendancy("Raider", BaseClass.Ranger, new List<SkillType>() {SkillType.Minions }),
-                new Ascendancy("Pathfinder", BaseClass.Ranger, new List<SkillType>() {SkillType.Minions }),
-                new Ascendancy("Inquisitor", BaseClass.Templar, new List<SkillType>() {SkillType.Minions }),
-                new Ascendancy("Hierophant", BaseClass.Templar, new List<SkillType>() {SkillType.Minions, SkillType.Traps, SkillType.Mines }),
-                new Ascendancy("Guardian", BaseClass.Templar),
-                new Ascendancy("Ascendant", BaseClass.Scion)
-            };
-            return a;
-        }
-
         //Get a random keystone
-        List<string> GetKeystones(int amount)
+        private List<string> GetKeystones(int amount)
         {
             Random r = new Random();
             List<string> a = new List<string>();
 
             for (int i = 0; i < amount; i++)
             {
-                string keystone = keyStones[r.Next(0, keyStones.Count)];
+                string keystone = Data.keyStones[r.Next(0, Data.keyStones.Count)];
                 if (!a.Contains(keystone))
                     a.Add(keystone);
                 else
@@ -828,9 +816,9 @@ namespace PathOfExileBot
         }
 
         //Returns a list of skills gems
-        List<ActiveSkill> CoC(int amountOfSkills)
+        private List<ActiveSkill> CoC(int amountOfSkills)
         {
-            List<string> notValidSkills = notValidSkillList;
+            List<string> notValidSkills = Data.notValidSkillList;
 
             List<ActiveSkill> a = new List<ActiveSkill>();
             Random r = new Random();
@@ -838,7 +826,7 @@ namespace PathOfExileBot
 
             for (int i = 0; i < amount; i++)
             {
-                ActiveSkill activeSkill = skillGems[r.Next(0, skillGems.Count)];
+                ActiveSkill activeSkill = Data.skills[r.Next(0, Data.skills.Count)];
                 if (!a.Contains(activeSkill) && !notValidSkills.Contains(activeSkill.name))
                 {
                     if (activeSkill.type == SkillType.MeleeSpell || activeSkill.type == SkillType.RangedSpell)
@@ -853,179 +841,5 @@ namespace PathOfExileBot
             }
             return a;
         }
-
-        //Fills the list of skills
-        List<ActiveSkill> FillSkillList()
-        {
-            List<ActiveSkill> a = new List<ActiveSkill>()
-            {
-                new ActiveSkill("Ancestral Protector", SkillType.Totems, 4),
-                new ActiveSkill("Ancestral Warchief", SkillType.Totems, 28),
-                new ActiveSkill("Cleave", SkillType.MeleeAttack, 1),
-                new ActiveSkill("Dominating Blow", SkillType.MeleeAttack, 28),
-                new ActiveSkill("Earthquake", SkillType.MeleeAttack, 28),
-                new ActiveSkill("Flame Totem", SkillType.Totems, 4),
-                new ActiveSkill("Glacial Hammer", SkillType.MeleeAttack, 1),
-                new ActiveSkill("Ground Slam", SkillType.MeleeAttack, 1),
-                new ActiveSkill("Heavy Strike", SkillType.MeleeAttack, 1),
-                new ActiveSkill("Ice Crash", SkillType.MeleeAttack, 28),
-                new ActiveSkill("Infernal Blow", SkillType.MeleeAttack, 1),
-                new ActiveSkill("Leap Slam", SkillType.MeleeAttack, 10),
-                new ActiveSkill("Molten Strike", SkillType.MeleeAttack, 1),
-                new ActiveSkill("Searing Bond", SkillType.Totems, 12),
-                new ActiveSkill("Shield Charge", SkillType.MeleeAttack, 10),
-                new ActiveSkill("Shockwave Totem", SkillType.Totems, 28),
-                new ActiveSkill("Static Strike", SkillType.MeleeAttack, 12),
-                new ActiveSkill("Sunder", SkillType.MeleeAttack, 12),
-                new ActiveSkill("Sweep", SkillType.MeleeAttack, 12),
-                new ActiveSkill("Animate Weapon", SkillType.RangedSpell, 4),
-                new ActiveSkill("Barrage", SkillType.RangedAttack, 12),
-                new ActiveSkill("Bear Trap", SkillType.Traps, 4),
-                new ActiveSkill("Blade Flurry", SkillType.MeleeAttack, 28),
-                new ActiveSkill("Blade Vortex", SkillType.MeleeSpell, 12),
-                new ActiveSkill("Bladefall", SkillType.RangedSpell, 28),
-                new ActiveSkill("Blast Rain", SkillType.RangedAttack, 28),
-                new ActiveSkill("Burning Arrow", SkillType.RangedAttack, 1),
-                new ActiveSkill("Cyclone", SkillType.MeleeAttack, 28),
-                new ActiveSkill("Detonate Dead", SkillType.RangedSpell, 4),
-                new ActiveSkill("Double Strike", SkillType.MeleeAttack, 1),
-                new ActiveSkill("Dual Strike", SkillType.MeleeAttack, 1),
-                new ActiveSkill("Ethereal Knives", SkillType.RangedSpell, 1),
-                new ActiveSkill("Explosive Arrow", SkillType.RangedAttack, 28),
-                new ActiveSkill("Fire Trap", SkillType.Traps, 1),
-                new ActiveSkill("Flicker Strike", SkillType.MeleeAttack, 10),
-                new ActiveSkill("Freeze Mine", SkillType.Traps, 10),
-                new ActiveSkill("Frenzy", SkillType.MeleeAttack, 16),
-                new ActiveSkill("Frost Blades", SkillType.MeleeAttack, 1),
-                new ActiveSkill("Ice Shot", SkillType.RangedAttack, 1),
-                new ActiveSkill("Ice Trap", SkillType.Traps, 28),
-                new ActiveSkill("Lacerate", SkillType.MeleeAttack, 12),
-                new ActiveSkill("Lightning Arrow", SkillType.RangedAttack, 12),
-                new ActiveSkill("Lightning Strike", SkillType.MeleeAttack, 12),
-                new ActiveSkill("Blink Arrow", SkillType.Minions, 10),
-                new ActiveSkill("Mirror Arrow", SkillType.Minions, 10),
-                new ActiveSkill("Puncture", SkillType.RangedAttack, 4),
-                new ActiveSkill("Rain of Arrows", SkillType.RangedAttack, 12),
-                new ActiveSkill("Reave", SkillType.MeleeAttack, 12),
-                new ActiveSkill("Shrapnel Shot", SkillType.RangedAttack, 1),
-                new ActiveSkill("Siege Ballista", SkillType.Totems, 4),
-                new ActiveSkill("Spectral Throw", SkillType.RangedAttack, 1),
-                new ActiveSkill("Split Arrow", SkillType.RangedAttack, 1),
-                new ActiveSkill("Tornado Shot", SkillType.RangedAttack, 28),
-                new ActiveSkill("Viper Strike", SkillType.MeleeAttack, 1),
-                new ActiveSkill("Wild Strike", SkillType.MeleeAttack, 28),
-                new ActiveSkill("Arc", SkillType.RangedSpell, 12),
-                new ActiveSkill("Arctic Breath", SkillType.RangedSpell, 28),
-                new ActiveSkill("Ball Lightning", SkillType.RangedSpell, 28),
-                new ActiveSkill("Blight", SkillType.MeleeSpell, 1),
-                new ActiveSkill("Discharge", SkillType.MeleeSpell, 28),
-                new ActiveSkill("Essence Drain", SkillType.RangedSpell, 12),
-                new ActiveSkill("Fire Nova Mine", SkillType.Traps, 12),
-                new ActiveSkill("Fireball", SkillType.RangedSpell, 1),
-                new ActiveSkill("Firestorm", SkillType.RangedSpell, 12),
-                new ActiveSkill("Flame Surge", SkillType.RangedSpell, 12),
-                new ActiveSkill("Flameblast", SkillType.RangedSpell, 28),
-                new ActiveSkill("Freezing Pulse", SkillType.RangedSpell, 1),
-                new ActiveSkill("Frost Bomb", SkillType.RangedSpell, 4),
-                new ActiveSkill("Frostbolt", SkillType.RangedSpell, 1),
-                new ActiveSkill("Glacial Cascade", SkillType.RangedSpell, 28),
-                new ActiveSkill("Ice Nova", SkillType.RangedSpell, 12),
-                new ActiveSkill("Ice Spear", SkillType.RangedSpell, 12),
-                new ActiveSkill("Incinerate", SkillType.RangedSpell, 12),
-                new ActiveSkill("Kinetic Blast", SkillType.RangedSpell, 28),
-                new ActiveSkill("Lightning Tendrils", SkillType.RangedSpell, 1),
-                new ActiveSkill("Lightning Trap", SkillType.Traps, 12),
-                new ActiveSkill("Magma Orb", SkillType.RangedSpell, 1),
-                new ActiveSkill("Orb of Storms", SkillType.RangedSpell, 4),
-                new ActiveSkill("Power Siphon", SkillType.RangedAttack, 12),
-                new ActiveSkill("Raise Spectre", SkillType.Minions, 28),
-                new ActiveSkill("Raise Zombie", SkillType.Minions, 1),
-                new ActiveSkill("Righteous Fire", SkillType.MeleeSpell, 16),
-                new ActiveSkill("Scorching Ray", SkillType.RangedSpell, 12),
-                new ActiveSkill("Shock Nova", SkillType.RangedSpell, 28),
-                new ActiveSkill("Spark", SkillType.RangedSpell, 1),
-                new ActiveSkill("Storm Call", SkillType.RangedSpell, 12),
-                new ActiveSkill("Summon Raging Spirit", SkillType.Minions, 4),
-                new ActiveSkill("Summon Skeletons", SkillType.Minions, 10),
-                new ActiveSkill("Vortex", SkillType.RangedSpell, 28),
-                new ActiveSkill("Cast On Critical Strike Support", SkillType.RangedSpell, 38)
-            };
-            return a;
-        }
-
-        //List of non valid Cast on Crit skills
-        #region Not valid CoC skills
-        private List<string> notValidSkillList = new List<string>()
-        {
-            "Blade Flurry",
-            "Blight",
-            "Flameblast",
-            "Incinerate",
-            "Scorching Ray",
-            "Wither",
-            "Lightning Tendrils",
-            "Righteous Fire",
-            "Flame Surge",
-            "Cast On Critical Strike Support"
-        };
-        #endregion
-
-        //List of vaal skills
-        #region Vaalskills
-        public static List<string> vaalSkills = new List<string>()
-        {
-            "Glacial Hammer",
-            "Ground Slam",
-            "Burning Arrow",
-            "Cyclone",
-            "Detonate Dead",
-            "Double Strike",
-            "Lightning Strike",
-            "Rain of Arrows",
-            "Reave",
-            "Spectral Throw",
-            "Arc",
-            "Cold Snap",
-            "Fireball",
-            "Flameblast",
-            "Ice Nova",
-            "Lightning Trap",
-            "Power Siphon",
-            "Righteous Fire",
-            "Spark",
-            "Storm Call",
-            "Summon Skeletons"
-        };
-        #endregion
-
-        //List of Keystones
-        #region keyStones
-        public static List<string> keyStones = new List<string>()
-        {
-            "Acrobatics",
-            "Ancestral Bond",
-            "Arrow Dancing",
-            "Avatar of Fire",
-            "Blood Magic",
-            "Chaos Inoculation",
-            "Conduit",
-            "Eldritch Battery",
-            "Elemental Equilibrium",
-            "Elemental Overload",
-            "Ghost Reaver",
-            "Iron Grip",
-            "Iron Reflexes",
-            "Mind Over Matter",
-            "Minion Instability",
-            "Necromantic Aegis",
-            "Pain Attunement",
-            "Phase Acrobatics",
-            "Point Blank",
-            "Resolute Technique",
-            "Unwavering Stance",
-            "Vaal Pact",
-            "Zealot's Oath"
-        };
-        #endregion
     }
 }

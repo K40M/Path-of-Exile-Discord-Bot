@@ -14,14 +14,16 @@ namespace PathOfExileBot
         public SkillType type;
         public int level;
         public bool vaal;
+        public List<string> tags;
 
         public ActiveSkill(string name, SkillType type, int level)
         {
             this.name = name;
             this.type = type;
             this.level = level;
+            this.tags = new List<string>();
 
-            if (PoEBot.vaalSkills.Contains(name))
+            if (Data.vaalSkills.Contains(name))
                 vaal = true;
         }
     }
