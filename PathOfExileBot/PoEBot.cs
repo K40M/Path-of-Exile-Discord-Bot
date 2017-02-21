@@ -22,7 +22,7 @@ namespace PathOfExileBot
         List<Build> builds;
         List<Map> maps;
         string filePath = Environment.CurrentDirectory + "\\Files\\";
-        private const string PoeWikiUrl = "http://pathofexile.gamepedia.com/Map";
+        private const string poeWikiMapUrl = "http://pathofexile.gamepedia.com/Map";
 
         public PoEBot()
         {
@@ -32,6 +32,11 @@ namespace PathOfExileBot
             GetMapData();
             LoadJsonData();
             UniqueBaseItems();
+
+            //CONFIG
+            //Should probably move this to a config file or something
+            bool differentOuputChannel = true;
+            string outPutChannel = "poe_channel";
 
             client = new DiscordClient(x =>
             {
@@ -55,70 +60,11 @@ namespace PathOfExileBot
 
             #region Commands
 
-            #region SoundCommands
-            commands.CreateCommand("Physical").Do(async (e) =>
-            {
-                JoinChannel(e.User.VoiceChannel);
-                voiceClient = await client.GetService<AudioService>().Join(voiceChannel);
-                SendAudio(filePath + "PHYSICAL.mp3");
-            });
-
-            commands.CreateCommand("Divine").Do(async (e) =>
-            {
-                JoinChannel(e.User.VoiceChannel);
-                voiceClient = await client.GetService<AudioService>().Join(voiceChannel);
-                SendAudio(filePath + "Kreygasm.mp3");
-            });
-
-            commands.CreateCommand("Alive").Do(async (e) =>
-            {
-                JoinChannel(e.User.VoiceChannel);
-                voiceClient = await client.GetService<AudioService>().Join(voiceChannel);
-                SendAudio(filePath + "StayinAlive.mp3");
-            });
-
-            commands.CreateCommand("Smak").Do(async (e) =>
-            {
-                if (e.Server.Users.Contains(e.User))
-                {
-                    JoinChannel(e.User.VoiceChannel);
-                    voiceClient = await client.GetService<AudioService>().Join(voiceChannel);
-                    await e.Channel.SendMessage("http://i.imgur.com/RkDAORK.gif");
-                    SendAudio(filePath + "Smak.mp3");
-                }
-                else await e.User.PrivateChannel.SendMessage("You need to be in the channel to use this command");
-            });
-
-            #endregion
-
             #region MiscCommands
-
-            commands.CreateCommand("Profiles").Parameter("name", ParameterType.Optional).Do(async (e) =>
-            {
-                string profileURL = "<https://www.pathofexile.com/account/view-profile/";
-                string url = "/characters> " + "\n";
-                if (e.GetArg("name") != "")
-                    await e.Channel.SendMessage(profileURL + e.GetArg("name") + url);
-                else
-                {
-                    await e.Channel.SendMessage(profileURL + "Zuanartha" + url +
-                                                profileURL + "Woetnie" + url +
-                                                profileURL + "Skrylax" + url +
-                                                profileURL + "Filetus" + url +
-                                                profileURL + "SilenceEcho" + url +
-                                                profileURL + "Pwnz0rWarr" + url);
-                }
-            });
-
-            commands.CreateCommand("Wiki").Parameter("ItemName", ParameterType.Unparsed).Do(async (e) =>
-            {
-                Console.WriteLine("Test with " + e.GetArg("ItemName") + " as arguments");
-                await e.Channel.SendMessage(CheckIfExists(e.GetArg("ItemName")));
-            });
 
             commands.CreateCommand("Base").Parameter("Item", ParameterType.Multiple).Do(async (e) =>
             {
-                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                Channel outputChannel = differentOuputChannel ? e.Server.TextChannels.Where(x => x.Name == outPutChannel).First() : e.Channel;
                 string argument = "";
                 string output = "";
                 for (int i = 0; i < e.Args.Length; i++)
@@ -130,12 +76,12 @@ namespace PathOfExileBot
                     if(a.uniqueBases.Contains(argument.Trim().ToLower()))
                         output += a.Name + "\n";
                 }
-                await poeChannel.SendMessage(output);
+                await outputChannel.SendMessage(output);
             });
 
             commands.CreateCommand("Bases").Do(async (e) =>
             {
-                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                Channel outputChannel = differentOuputChannel ? e.Server.TextChannels.Where(x => x.Name == outPutChannel).First() : e.Channel;
                 string output = "";
                 maps = maps.OrderBy(x => x.Name).ToList();
                 for (int i = 0; i < maps.Count / 3; i++)
@@ -143,26 +89,26 @@ namespace PathOfExileBot
                     if(maps[i].uniqueBases.Count >0)
                         output += maps[i].ToString() + "\n";
                 }
-                await poeChannel.SendMessage(output);
+                await outputChannel.SendMessage(output);
                 output = "";
                 for (int i = (maps.Count / 3); i < (maps.Count / 3) * 2; i++)
                 {
                     if (maps[i].uniqueBases.Count > 0)
                         output += maps[i].ToString() + "\n";
                 }
-                await poeChannel.SendMessage(output);
+                await outputChannel.SendMessage(output);
                 output = "";
                 for (int i = (maps.Count / 3) * 2; i < maps.Count; i++)
                 {
                     if (maps[i].uniqueBases.Count > 0)
                         output += maps[i].ToString() + "\n";
                 }
-                await poeChannel.SendMessage(output);
+                await outputChannel.SendMessage(output);
             });
 
             commands.CreateCommand("checkbases").Do(async (e) =>
             {
-                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                Channel outputChannel = differentOuputChannel ? e.Server.TextChannels.Where(x => x.Name == outPutChannel).First() : e.Channel;
                 List<string> uniqueBases = new List<string>() { "Blue_Pearl_Amulet", "Bone_Helmet", "Crystal_Belt", "Gripped_Gloves", "Marble_Amulet", "Opal_Ring", "Spiked_Gloves", "Steel_Ring", "Vanguard_Belt", "Fingerless_Silk_Gloves", "Two-Toned_Boots_(Cold_and_Lightning_Resistance)", "Two-Toned_Boots_(Fire_and_Lightning_Resistance)", "Two-Toned_Boots_(Fire_and_Cold_Resistance)", "Blue_Pearl_Amulet" };
 
                 string output = "";
@@ -180,12 +126,12 @@ namespace PathOfExileBot
                     }                  
                 }
 
-                await poeChannel.SendMessage(output);
+                await outputChannel.SendMessage(output);
             });
 
             commands.CreateCommand("Map").Parameter("Map", ParameterType.Multiple).Do(async (e) =>
             {
-                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                Channel outputChannel = differentOuputChannel ? e.Server.TextChannels.Where(x => x.Name == outPutChannel).First() : e.Channel;
                 var argument = "";
                 for (int i = 0; i < e.Args.Length; i++)
                 {
@@ -196,7 +142,7 @@ namespace PathOfExileBot
                 {
                     if(map.Name.ToLower() == argument.ToLower().Trim())
                     {
-                        await poeChannel.SendMessage(map.ToString());
+                        await outputChannel.SendMessage(map.ToString());
                         return;
                     }
                 }
@@ -204,7 +150,7 @@ namespace PathOfExileBot
 
             commands.CreateCommand("Maps").Do(async (e) =>
             {
-                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                Channel outputChannel = differentOuputChannel ? e.Server.TextChannels.Where(x => x.Name == outPutChannel).First() : e.Channel;
                 string output = "";
                 maps = maps.OrderBy(o => o.Name).ToList();
 
@@ -212,27 +158,27 @@ namespace PathOfExileBot
                 {
                     output += maps[i].ToString() + "\n";
                 }
-                await poeChannel.SendMessage(output);
+                await outputChannel.SendMessage(output);
                 output = "";
 
                 for (int i = (maps.Count/3); i < (maps.Count /3) *2; i++)
                 {
                     output += maps[i].ToString() + "\n";
                 }
-                await poeChannel.SendMessage(output);
+                await outputChannel.SendMessage(output);
                 output = "";
 
                 for (int i = (maps.Count / 3) *2; i < maps.Count; i++)
                 {
                     output += maps[i].ToString() + "\n";
                 }
-                await poeChannel.SendMessage(output);
+                await outputChannel.SendMessage(output);
             });
 
             commands.CreateCommand("Maps").Parameter("Layout", ParameterType.Optional).Parameter("Level", ParameterType.Optional).Do(async (e) =>
             {
                 maps = maps.OrderBy(q => q.Name).ToList();
-                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                Channel outputChannel = differentOuputChannel ? e.Server.TextChannels.Where(x => x.Name == outPutChannel).First() : e.Channel;
                 string output = "";
                 int a;
                 var arguments = e.Args;
@@ -255,7 +201,7 @@ namespace PathOfExileBot
                     maps.Where(m => m.LayoutType.ToLower() == e.GetArg("Layout").ToLower()).ToList()
                         .ForEach(x => output += x.ToString() + "\n");
 
-                await poeChannel.SendMessage(output);
+                await outputChannel.SendMessage(output);
             });
 
             #endregion
@@ -307,7 +253,7 @@ namespace PathOfExileBot
 
             commands.CreateCommand("Builds").Parameter("buildtype", ParameterType.Optional).Do(async (e) =>
             {
-                Channel poeChannel = e.Server.TextChannels.Where(x => x.Name == "poe_channel").First();
+                Channel outputChannel = differentOuputChannel ? e.Server.TextChannels.Where(x => x.Name == outPutChannel).First() : e.Channel;
                 var arguments = e.Args;
                 string messageToSend = "";
                 BuildType type;
@@ -337,7 +283,7 @@ namespace PathOfExileBot
                                      build.description + "\n" + "----------------------------------------------------------------------------------------------------" + "\n";
                 }
 
-                await poeChannel.SendMessage(messageToSend);
+                await outputChannel.SendMessage(messageToSend);
             });
 
 
@@ -440,8 +386,9 @@ namespace PathOfExileBot
             }
         }
 
-        void LoadJsonData()
+        private void LoadJsonData()
         {
+            //If we dont currently have a builds file we create one and load the JSON data.
             if (!File.Exists(filePath + "Builds.json"))
             {
                 File.Create(filePath + "Builds.json");
@@ -455,7 +402,7 @@ namespace PathOfExileBot
             }
         }
 
-        string Roll(string userName, int numberOfKeystones)
+        private string Roll(string userName, int numberOfKeystones)
         {
             Random r = new Random();
             string displayKeystones;
@@ -518,7 +465,7 @@ namespace PathOfExileBot
 
             await Task.Run(() =>
             {
-                htmlDoc.Load(GetHtmlStream(PoeWikiUrl));
+                htmlDoc.Load(GetHtmlStream(poeWikiMapUrl));
             });
 
             if (htmlDoc.ParseErrors != null && htmlDoc.ParseErrors.Any())
@@ -665,7 +612,7 @@ namespace PathOfExileBot
             return gem;
         }
 
-        //Returns a tinyURL based on the given url
+        //Returns a tinyURL based of the given url
         private string ShortenURL(string url)
         {
             Uri address = new Uri("http://tinyurl.com/api-create.php?url=" + url);
@@ -674,78 +621,11 @@ namespace PathOfExileBot
             return tinyUrl;
         }
 
-        //Checks if the requested item exists on the wiki
-        private string CheckIfExists(string item)
-        {
-            string itemName = "";
-            string[] a = item.ToLower().Replace("'", "%27").Split(new char[] { ' ', '_', '=', '~', '.', '/', '|', '\'' });
-            if (a.Length == 1)
-                itemName += char.ToUpper(a[0][0]) + a[0].Substring(1);
-            else
-            {
-                for (int i = 0; i < a.Length; i++)
-                {
-                    if (i < a.Length - 1)
-                    {
-                        if (a[i].ToCharArray().Contains('-'))
-                        {
-                            string[] ab = a[i].Split('-');
-                            itemName += char.ToUpper(ab[0][0]) + ab[0].Substring(1) + "-" + char.ToUpper(ab[1][0]) + ab[1].Substring(1) + "_";
-                        }
-                        else if (a[i].ToLower() == "and")
-                        {
-                            itemName += "and_";
-                        }
-                        else if (a[i].ToLower() == "of")
-                        {
-                            itemName += "of_";
-                        }
-                        else if (a[i].ToLower() == "the")
-                        {
-                            itemName += "the_";
-                        }
-                        else if (a[i].ToLower() == "when")
-                        {
-                            itemName += "when_";
-                        }
-                        else if (a[i] == "-")
-                        {
-                            itemName += "-";
-                        }
-                        else
-                        {
-                            itemName += char.ToUpper(a[i][0]) + a[i].Substring(1) + "_";
-                        }
-                    }
-                    else
-                    {
-                        itemName += char.ToUpper(a[i][0]) + a[i].Substring(1);
-                    }
-                }
-            }
-
-            HttpWebResponse response;
-            try
-            {
-                Console.WriteLine("checking if " + itemName + " exists");
-                HttpWebRequest request = (HttpWebRequest)WebRequest.Create("http://pathofexile.gamepedia.com/" + itemName);
-                request.Proxy = null;
-                request.Method = WebRequestMethods.Http.Head;
-                response = (HttpWebResponse)request.GetResponse();
-                bool pageExists = response.StatusCode == HttpStatusCode.OK;
-                Console.WriteLine(itemName + " " + pageExists);
-
-                response.Close();
-                return "<http://pathofexile.gamepedia.com/" + itemName + ">";
-            }
-            catch (WebException)
-            {
-                return "Item doesn't exist";
-            }
-
-        }
-
-        //Returns a link to the requested item
+        /// <summary>
+        /// Returns a link in chat to a wiki page
+        /// </summary>
+        /// <param name="item">The name of the item you want returned</param>
+        /// <returns>Returns a link in chat to a wiki page</returns>
         private string GetWikiLink(string item)
         {
             return "<http://pathofexile.gamepedia.com/" + item.Replace(" ", "_") + ">";
@@ -757,10 +637,13 @@ namespace PathOfExileBot
             Console.WriteLine(e.Message);
         }
 
-        //Join a voiceChannel.
+        /// <summary>
+        /// Joins a voiceChannel
+        /// </summary>
+        /// <param name="channelToJoin">The channel to join</param>
         private void JoinChannel(Channel channelToJoin)
         {
-            var voiceChannels = client.FindServers("Big Boys").FirstOrDefault().VoiceChannels;
+            var voiceChannels = client.Servers.First().VoiceChannels;
 
             foreach (var channel in voiceChannels)
             {
@@ -769,7 +652,10 @@ namespace PathOfExileBot
             }
         }
 
-        //Play audio files to the current Voice Channel
+        /// <summary>
+        /// Plays an mp3 file in the current voiceChannel
+        /// </summary>
+        /// <param name="filePath">Path for mp3 file</param>
         private void SendAudio(string filePath)
         {
             voiceClient.Wait();
@@ -796,7 +682,11 @@ namespace PathOfExileBot
             }
         }
 
-        //Get a random keystone
+        /// <summary>
+        /// Returns a list of keystones
+        /// </summary>
+        /// <param name="amount">The amount of keystones you want</param>
+        /// <returns>Returns a list of keystones</returns>
         private List<string> GetKeystones(int amount)
         {
             Random r = new Random();
@@ -815,7 +705,11 @@ namespace PathOfExileBot
             return a;
         }
 
-        //Returns a list of skills gems
+        /// <summary>
+        /// Returns a list of Cast on Crit skills
+        /// </summary>
+        /// <param name="amountOfSkills">The amount of Cast on Crit skills you want</param>
+        /// <returns>Returns a list of Cast on Crit skills</returns>
         private List<ActiveSkill> CoC(int amountOfSkills)
         {
             List<string> notValidSkills = Data.notValidSkillList;
